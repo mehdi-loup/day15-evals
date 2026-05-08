@@ -9,8 +9,8 @@ Two-scorer strategy:
   1. tool_routing_scorer (deterministic): did the model call the right tool?
      - grounded cases: must call searchCorpus
      - ungrounded-price: must call getTokenPrice, NOT searchCorpus
-     - ungrounded-fake-eip: must NOT call any tool
-     - ungrounded-eip4337: no tool constraint (may or may not search)
+     - ungrounded-fake-path: must call searchCorpus (searches, finds nothing, says not found)
+     - ungrounded-general-defi: no tool constraint (general DeFi knowledge, not a path)
   2. faithfulness_scorer (model-graded): did the grounded responses use corpus content
      correctly, and did ungrounded responses avoid fabricating corpus citations?
 
@@ -111,7 +111,7 @@ def _tool_routing_score(state: TaskState) -> Score:
             )
         return Score(value=CORRECT, answer=", ".join(tool_calls), explanation=f"Correctly called '{expected_tool}'")
 
-    # No routing constraint on this case (rag-ungrounded-eip4337)
+    # No routing constraint on this case (rag-ungrounded-general-defi)
     return Score(value=CORRECT, answer="unconstrained", explanation="No tool routing constraint for this case")
 
 

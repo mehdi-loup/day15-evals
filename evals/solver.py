@@ -26,7 +26,9 @@ from inspect_ai.model import ChatMessageAssistant, ModelOutput
 
 
 AGENT_URL = "https://day1-wallet-agent.vercel.app/api/chat"
-TIMEOUT_SECONDS = 60
+# connect: 10s for TCP handshake; read: 120s between stream chunks (searchCorpus
+# calls Voyage AI embeddings + Supabase pgvector — up to 6s; cold-start adds more)
+HTTPX_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=5.0)
 
 
 @solver
@@ -48,7 +50,7 @@ def wallet_agent_solver() -> Solver:
         tool_calls: list[str] = []
         text_chunks: list[str] = []
 
-        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=HTTPX_TIMEOUT) as client:
             async with client.stream("POST", AGENT_URL, json=payload) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():

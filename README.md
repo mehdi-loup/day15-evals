@@ -56,10 +56,11 @@ export $(cat .env | xargs)
 uv run inspect eval evals/wallet_agent.py --model anthropic/claude-haiku-4-5-20251001 --log-dir logs/
 ```
 
-**Run Task 2** (agentic RAG, 6 cases, ~8s, ~$0.004 grader cost):
+**Run Task 2** (agentic RAG, 6 cases, ~70s, ~$0.004 grader cost):
 ```bash
-uv run inspect eval evals/agentic_rag.py --model anthropic/claude-haiku-4-5-20251001 --log-dir logs/
+uv run inspect eval evals/agentic_rag.py --model anthropic/claude-haiku-4-5-20251001 --log-dir logs/ --max-tasks 2
 ```
+> `--max-tasks 2` limits parallel sample execution. RAG cases call `searchCorpus`, which triggers a Voyage AI embedding call + Supabase pgvector query (~6s each). Running all 6 in parallel exhausts the per-chunk read timeout; sequential pairs avoid this.
 
 **View results in the Inspect AI log viewer:**
 ```bash
