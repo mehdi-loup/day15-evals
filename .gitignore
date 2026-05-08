@@ -1,0 +1,6 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+# full log files can be large; summary JSONs are committed separately
+logs/*.eval
