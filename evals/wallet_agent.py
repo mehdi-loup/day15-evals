@@ -30,6 +30,7 @@ import sys, os
 _HERE = os.path.dirname(__file__)
 sys.path.insert(0, _HERE)
 from solver import wallet_agent_solver
+from latency import latency_scorer
 
 _DATASETS = os.path.join(_HERE, "..", "datasets")
 
@@ -109,5 +110,5 @@ def wallet_agent():
     return Task(
         dataset=dataset,
         solver=[wallet_agent_solver()],
-        scorer=tool_routing_scorer(),
+        scorer=[tool_routing_scorer(), latency_scorer()],
     )

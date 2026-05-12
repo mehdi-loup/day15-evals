@@ -39,6 +39,8 @@ from inspect_ai.scorer import Scorer, Score, scorer, accuracy, stderr, CORRECT, 
 from inspect_ai.model import get_model
 from inspect_ai.solver import TaskState
 
+from latency import latency_scorer
+
 _DATASETS = os.path.join(_HERE, "..", "datasets")
 
 GRADER_MODEL = "anthropic/claude-haiku-4-5-20251001"
@@ -192,5 +194,5 @@ def combined_routing():
     return Task(
         dataset=dataset,
         solver=[wallet_agent_solver()],
-        scorer=[routing_scorer_v2(), faithfulness_scorer()],
+        scorer=[routing_scorer_v2(), faithfulness_scorer(), latency_scorer()],
     )
