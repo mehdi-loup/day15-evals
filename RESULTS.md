@@ -189,3 +189,35 @@ Both run all three tasks, check accuracy thresholds, check p50 latency, upload l
 | **Total** | | **~$0.010** |
 
 At $0.010/run: nightly cadence = ~$0.30/month. Non-issue for a solo project.
+
+---
+
+### Failure rehearsal (Day 16 Move 3b)
+
+Regression: renamed `getTokenPrice` → `getTokenPriceV2` in `app/api/chat/route.ts`. Committed to main, deployed to Vercel.
+
+**Regression run (546b767):**
+```
+PASS: wallet-agent/tool_routing_scorer accuracy=1.000  (pre-deployment; Vercel serving old code)
+PASS: agentic-rag/tool_routing_scorer  accuracy=1.000  (Vercel deployed mid-run)
+FAIL: combined-routing/routing_scorer_v2 accuracy=0.333 < threshold=0.670
+```
+CI went red. Combined-routing caught 4/6 price-routing failures.
+
+**Revert push (5512f4a) — deployment race condition:**
+```
+FAIL: wallet-agent/tool_routing_scorer accuracy=0.625  (regression still live on Vercel)
+FAIL: agentic-rag/tool_routing_scorer  accuracy=0.833  (Vercel deploying revert mid-run)
+PASS: combined-routing/routing_scorer_v2 accuracy=1.000 (revert fully deployed by then)
+```
+The 10-minute eval suite duration > Vercel's ~2-3 min deploy time, so different tasks see different code versions.
+
+**Clean workflow_dispatch run (25761771257) — after deployment settled:**
+```
+PASS: wallet-agent/tool_routing_scorer  accuracy=1.000
+PASS: agentic-rag/tool_routing_scorer   accuracy=1.000
+PASS: combined-routing/routing_scorer_v2 accuracy=1.000
+```
+Green in 2m57s.
+
+**Finding:** For CI runs triggered by a push, there is a deployment race window where early tasks (wallet_agent, ~5s) run against the previous Vercel build while later tasks (combined_routing, ~10min) run against the new build. Regressions are still caught — they just may appear in a different task than expected depending on deployment timing. `workflow_dispatch` triggered after deployment completes gives a clean all-green signal.
