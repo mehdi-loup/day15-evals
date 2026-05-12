@@ -13,8 +13,8 @@ on:
 
 jobs:
   eval:
-    timeout-minutes: 10
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -33,109 +33,107 @@ jobs:
       - name: Run wallet_agent eval
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          uv run inspect eval evals/wallet_agent.py \
-            --model anthropic/claude-haiku-4-5-20251001 \
-            --log-dir logs/ 2>&1 | tee /tmp/wallet_agent_out.txt
+        run: uv run inspect eval evals/wallet_agent.py --model anthropic/claude-haiku-4-5-20251001 --log-dir logs/
 
       - name: Run agentic_rag eval
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          uv run inspect eval evals/agentic_rag.py \
-            --model anthropic/claude-haiku-4-5-20251001 \
-            --log-dir logs/ 2>&1 | tee /tmp/agentic_rag_out.txt
+        run: uv run inspect eval evals/agentic_rag.py --model anthropic/claude-haiku-4-5-20251001 --log-dir logs/
 
       - name: Run combined_routing eval
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          uv run inspect eval evals/combined_routing.py \
-            --model anthropic/claude-haiku-4-5-20251001 \
-            --log-dir logs/ 2>&1 | tee /tmp/combined_routing_out.txt
+        run: uv run inspect eval evals/combined_routing.py --model anthropic/claude-haiku-4-5-20251001 --log-dir logs/
 
-      - name: Check accuracy thresholds
-        # Gate: accuracy must be >= threshold for all accuracy-based scorers.
-        # Thresholds:
-        #   wallet_agent tool_routing:      1.00 (deterministic, should never regress)
-        #   agentic_rag  tool_routing:      1.00 (deterministic)
-        #   agentic_rag  faithfulness:      0.83 (5/6 — rag-ungrounded-general-defi shows
-        #                                          agent-level non-determinism; documented in
-        #                                          STABILITY.md and Day 16 RESULTS.md)
-        #   combined_routing routing_v2:    1.00 (deterministic)
-        #   combined_routing faithfulness:  1.00 (all 6 cases stable per flake test)
-        run: |
-          python - <<'PYEOF'
-          import re, sys
-
-          def extract_accuracy(path, scorer_name):
-              with open(path) as f:
-                  text = f.read()
-              pattern = rf"{re.escape(scorer_name)}.*?accuracy\s+([\d.]+)"
-              m = re.search(pattern, text, re.DOTALL)
-              if m:
-                  return float(m.group(1))
-              return None
-
-          checks = [
-              ("/tmp/wallet_agent_out.txt",     "tool_routing_scorer", 1.00),
-              ("/tmp/agentic_rag_out.txt",       "tool_routing_scorer", 1.00),
-              ("/tmp/agentic_rag_out.txt",       "faithfulness_scorer", 0.83),
-              ("/tmp/combined_routing_out.txt",  "routing_scorer_v2",   1.00),
-              ("/tmp/combined_routing_out.txt",  "faithfulness_scorer", 1.00),
-          ]
-
-          failed = False
-          for path, scorer, threshold in checks:
-              acc = extract_accuracy(path, scorer)
-              if acc is None:
-                  print(f"FAIL: could not parse accuracy for {scorer} in {path}")
-                  failed = True
-              elif acc < threshold:
-                  print(f"FAIL: {scorer} accuracy {acc:.3f} < threshold {threshold:.3f} ({path})")
-                  failed = True
-              else:
-                  print(f"PASS: {scorer} accuracy {acc:.3f} >= {threshold:.3f}")
-
-          sys.exit(1 if failed else 0)
-          PYEOF
-
-      - name: Check p50 latency budgets
-        # Gate: p50 latency per task must be below budget.
-        # p99 is informational only — cold-start Lambda outliers inflate it unpredictably.
-        # Budgets (2x observed warm p50):
+      - name: Check accuracy and latency thresholds
+        # Accuracy thresholds:
+        #   wallet_agent tool_routing_scorer:        1.00 (deterministic)
+        #   agentic_rag  tool_routing_scorer:        1.00 (deterministic)
+        #   agentic_rag  faithfulness_scorer:        0.83 (5/6 — rag-ungrounded-general-defi
+        #                                                  shows agent non-determinism; see STABILITY.md)
+        #   combined_routing routing_scorer_v2:      1.00 (deterministic)
+        #   combined_routing faithfulness_scorer:    1.00 (stable per flake test N=3)
+        #
+        # Latency budgets (p50, not p99 — cold-start outliers inflate p99 on Hobby plan):
         #   wallet_agent      p50 < 8000ms
         #   agentic_rag       p50 < 15000ms
         #   combined_routing  p50 < 20000ms
         run: |
-          python - <<'PYEOF'
-          import re, sys
+          uv run python - <<'PYEOF'
+          import glob, json, subprocess, sys
+          from collections import defaultdict
 
-          def extract_p50(path):
-              with open(path) as f:
-                  text = f.read()
-              m = re.search(r"p50_ms\s+([\d.]+)", text)
-              if m:
-                  return float(m.group(1))
-              return None
+          ACCURACY_THRESHOLDS = {
+              "wallet-agent":     {"tool_routing_scorer": 1.00},
+              "agentic-rag":      {"tool_routing_scorer": 1.00, "faithfulness_scorer": 0.83},
+              "combined-routing": {"routing_scorer_v2": 1.00, "faithfulness_scorer": 1.00},
+          }
+          P50_BUDGETS = {
+              "wallet-agent":     8000,
+              "agentic-rag":      15000,
+              "combined-routing": 20000,
+          }
 
-          checks = [
-              ("/tmp/wallet_agent_out.txt",    8000),
-              ("/tmp/agentic_rag_out.txt",    15000),
-              ("/tmp/combined_routing_out.txt", 20000),
-          ]
+          def load_log(task_slug):
+              pattern = f"logs/*{task_slug}*.eval"
+              files = sorted(glob.glob(pattern))
+              if not files:
+                  return None
+              log_file = files[-1]
+              raw = subprocess.check_output(
+                  ["uv", "run", "inspect", "log", "dump", log_file],
+                  stderr=subprocess.DEVNULL,
+              )
+              return json.loads(raw)
 
           failed = False
-          for path, budget_ms in checks:
-              p50 = extract_p50(path)
-              label = path.split("/")[-1].replace("_out.txt", "")
-              if p50 is None:
-                  print(f"WARN: could not parse p50_ms for {label} -- skipping latency check")
-              elif p50 > budget_ms:
-                  print(f"FAIL: {label} p50={p50:.0f}ms exceeds budget {budget_ms}ms")
+
+          for task_slug in ["wallet-agent", "agentic-rag", "combined-routing"]:
+              data = load_log(task_slug)
+              if data is None:
+                  print(f"FAIL: no log file found for {task_slug}")
                   failed = True
-              else:
-                  print(f"PASS: {label} p50={p50:.0f}ms <= {budget_ms}ms")
+                  continue
+
+              samples = data.get("samples", [])
+              scorer_verdicts = defaultdict(list)
+              latency_values = []
+
+              for s in samples:
+                  for scorer_name, score_data in s.get("scores", {}).items():
+                      if not isinstance(score_data, dict):
+                          continue
+                      val = score_data.get("value")
+                      if scorer_name == "latency_scorer":
+                          if isinstance(val, (int, float)):
+                              latency_values.append(float(val))
+                      else:
+                          scorer_verdicts[scorer_name].append(val in ("C", 1, 1.0, True))
+
+              # Accuracy checks
+              for scorer_name, threshold in ACCURACY_THRESHOLDS.get(task_slug, {}).items():
+                  verdicts = scorer_verdicts.get(scorer_name)
+                  if not verdicts:
+                      print(f"FAIL: {task_slug}/{scorer_name} — no results found")
+                      failed = True
+                      continue
+                  acc = sum(verdicts) / len(verdicts)
+                  if acc < threshold:
+                      print(f"FAIL: {task_slug}/{scorer_name} accuracy={acc:.3f} < threshold={threshold:.3f}")
+                      failed = True
+                  else:
+                      print(f"PASS: {task_slug}/{scorer_name} accuracy={acc:.3f}")
+
+              # p50 latency check
+              budget = P50_BUDGETS.get(task_slug)
+              if latency_values and budget:
+                  p50 = sorted(latency_values)[len(latency_values) // 2]
+                  p99 = sorted(latency_values)[-1]  # informational
+                  if p50 > budget:
+                      print(f"FAIL: {task_slug} p50={p50:.0f}ms exceeds budget {budget}ms (p99={p99:.0f}ms, informational)")
+                      failed = True
+                  else:
+                      print(f"PASS: {task_slug} p50={p50:.0f}ms <= {budget}ms (p99={p99:.0f}ms, informational)")
 
           sys.exit(1 if failed else 0)
           PYEOF
