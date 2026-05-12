@@ -10,10 +10,10 @@ on:
 
 # Estimated cost per run: ~$0.010 (grader calls + deployed agent HTTP)
 # At nightly cadence: ~$0.30/month — non-issue for a solo project.
-timeout-minutes: 10
 
 jobs:
   eval:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
 
     steps:
