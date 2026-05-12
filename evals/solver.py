@@ -28,9 +28,9 @@ from inspect_ai.model import ModelOutput
 
 
 AGENT_URL = "https://day1-wallet-agent.vercel.app/api/chat"
-# connect: 10s for TCP handshake; read: 120s between stream chunks (searchCorpus
-# calls Voyage AI embeddings + Supabase pgvector — up to 6s; cold-start adds more)
-HTTPX_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=5.0)
+# connect: 10s for TCP handshake; read: 300s between stream chunks (searchCorpus
+# calls Voyage AI embeddings + Supabase pgvector — up to 6s; cold-start can add 60s+)
+HTTPX_TIMEOUT = httpx.Timeout(connect=10.0, read=300.0, write=30.0, pool=5.0)
 
 
 def _make_user_message(text: str) -> dict:
