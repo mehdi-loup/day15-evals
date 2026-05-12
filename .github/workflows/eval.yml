@@ -52,33 +52,25 @@ jobs:
         #   combined_routing routing_scorer_v2:      0.67 (4/6 floor; ambiguous-price-impact flakes)
         #
         # Excluded from CI gate (collected but informational):
-        #   faithfulness scorers: agent non-determinism + cold-start stream cutoffs → too noisy
-        #   latency for combined_routing: external services (Voyage AI, Supabase) cold-start ~70s
-        #
-        # Latency budgets (p50):
-        #   wallet_agent  p50 < 30000ms
-        #   agentic_rag   p50 < 30000ms
+        #   faithfulness scorers: 0.67–1.00 variance; agent non-determinism + stream cutoffs
+        #   ALL latency: Voyage AI + Supabase cold-starts: 7s–131s p50 variance across runs
         run: |
           uv run python - <<'PYEOF'
           import glob, json, subprocess, sys
           from collections import defaultdict
 
           ACCURACY_THRESHOLDS = {
-              # Routing scorers are deterministic — 1.00 is reliable and catches real regressions.
+              # Only routing scorers gate CI — deterministic, catches real regressions.
+              # Faithfulness scores are collected but not gated: agent non-determinism +
+              # cold-start stream cutoffs cause 0.67–1.00 variance across runs.
               "wallet-agent":     {"tool_routing_scorer": 1.00},
               "agentic-rag":      {"tool_routing_scorer": 1.00},
-              # combined-routing routing: 0.67 — ambiguous-price-impact intermittently fires the
-              # forbidden getTokenPrice. Floor at 4/6 to catch systematic failures.
+              # Floor at 0.67 (4/6); ambiguous-price-impact intermittently fires forbidden tool.
               "combined-routing": {"routing_scorer_v2": 0.67},
-              # Faithfulness and latency are excluded from CI gates: too noisy due to agent
-              # non-determinism + cold-start stream cutoffs. Scores still collected for monitoring.
           }
-          P50_BUDGETS = {
-              # p50 budgets: only on wallet-agent (stable) and agentic-rag (mostly stable).
-              # combined-routing excluded — 4/6 cases call external services with cold-start p50~70s.
-              "wallet-agent":     30000,
-              "agentic-rag":      30000,
-          }
+          # No latency budgets: Voyage AI + Supabase cold-starts cause 7s–131s p50 variance.
+          # All latency data is collected and visible in logs; not suitable for CI gating.
+          P50_BUDGETS = {}
 
           def load_log(task_slug):
               pattern = f"logs/*{task_slug}*.eval"
