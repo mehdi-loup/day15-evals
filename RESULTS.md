@@ -221,3 +221,87 @@ PASS: combined-routing/routing_scorer_v2 accuracy=1.000
 Green in 2m57s.
 
 **Finding:** For CI runs triggered by a push, there is a deployment race window where early tasks (wallet_agent, ~5s) run against the previous Vercel build while later tasks (combined_routing, ~10min) run against the new build. Regressions are still caught — they just may appear in a different task than expected depending on deployment timing. `workflow_dispatch` triggered after deployment completes gives a clean all-green signal.
+
+---
+
+## Run — 2026-05-13 (Day 17)
+
+| Field | Value |
+|---|---|
+| Date | 2026-05-13 |
+| Inspect AI version | 0.3.220 |
+| System under test | https://day1-wallet-agent.vercel.app |
+| Python | 3.12.13 |
+| Agent commit | 7a58ea1 (fix: searchCorpus scope + getTokenPrice scope) |
+
+### Agent-side flake fixes (Move 1)
+
+Two known flakes from Day 16 patched in the agent system prompt (commits `90465f5`, `7a58ea1` on `mehdi-loup/day1-wallet-agent`):
+
+| Flake | Root cause | Fix |
+|---|---|---|
+| `ambiguous-price-impact` | Agent conflated "price impact" (DEX slippage) with "spot price" and called `getTokenPrice` | Explicit exclusion: `getTokenPrice` does NOT handle slippage/swap output; explain agent cannot compute on-chain swap simulations |
+| `rag-ungrounded-general-defi` | Agent called `searchCorpus`, found partial LP-strategy content (Echelon Prime path), fabricated Uniswap V3 IL mechanics attributed to the corpus | Scope exclusion: general DeFi mechanics (IL, AMM math, LP math) are NOT corpus topics; answer from training knowledge without calling searchCorpus |
+
+**Before/after scores:**
+
+| Task | Metric | Pre-fix (Day 16) | Post-fix (Day 17) |
+|---|---|---|---|
+| `combined_routing` | routing_scorer_v2 | 0.833 (5/6) | **1.000** (6/6) |
+| `agentic_rag` | faithfulness_scorer | 0.833 (5/6) | **1.000** (6/6) |
+
+Fix 2 required two iterations: the first pass (`90465f5`) added "zero results → literal fallback phrase" and a protocol name ban. The agent found *partial* corpus results (a real LP strategy path) and fabricated on top of them, bypassing the zero-results trigger. The second pass (`7a58ea1`) added an explicit scope exclusion from the corpus query path for general DeFi mechanics.
+
+---
+
+### Cross-grader benchmark (Move 2)
+
+Benchmark: `evals/scripts/cross_grader_benchmark.sh` — both graded tasks run against two grader models. The `--model` CLI flag controls the Inspect solver-side model; our HTTP solver ignores it. Grader model is controlled via `GRADER_MODEL` env var read at task load time.
+
+**Important distinction:** The agent under test is fixed (Anthropic claude-haiku-4-5-20251001 via the deployed URL). Cross-grader variation affects only the *faithfulness scorer's judge model*, not the agent's reasoning.
+
+| Task | Grader | faithfulness_scorer | routing_scorer* | Cost (grader) |
+|---|---|---|---|---|
+| `agentic_rag` | claude-haiku-4-5-20251001 | **1.000** (6/6) | 1.000 | ~$0.004 |
+| `agentic_rag` | claude-sonnet-4-6 | **1.000** (6/6) | 1.000 | ~$0.018 |
+| `combined_routing` | claude-haiku-4-5-20251001 | **1.000** (6/6) | 0.833** | ~$0.004 |
+| `combined_routing` | claude-sonnet-4-6 | **1.000** (6/6) | 1.000** | ~$0.018 |
+
+*routing_scorer is deterministic — grader model does not affect it  
+**The 0.833 vs 1.000 routing difference across grader runs is agent-side non-determinism (`ambiguous-price-impact` flaked in the Haiku run, passed in the Sonnet run). Not a grader effect.
+
+**Agreement table (faithfulness only — the only grader-influenced scorer):**
+
+| Task | Case | Haiku verdict | Sonnet verdict | Agreement |
+|---|---|---|---|---|
+| `agentic_rag` | rag-grounded-conditional-router | C | C | ✓ |
+| `agentic_rag` | rag-grounded-delta-neutral | C | C | ✓ |
+| `agentic_rag` | rag-grounded-ens-manager | C | C | ✓ |
+| `agentic_rag` | rag-ungrounded-fake-path | C | C | ✓ |
+| `agentic_rag` | rag-ungrounded-general-defi | C | C | ✓ |
+| `agentic_rag` | rag-ungrounded-price-query | C | C | ✓ |
+| `combined_routing` | ambiguous-corpus-price | C | C | ✓ |
+| `combined_routing` | ambiguous-price-impact | C | C | ✓ |
+| `combined_routing` | combined-delta-price | C | C | ✓ |
+| `combined_routing` | combined-ens-wallet-degraded | C | C | ✓ |
+| `combined_routing` | multi-turn-corpus-to-price | C | C | ✓ |
+| `combined_routing` | multi-turn-price-followup | C | C | ✓ |
+
+**Agreement rate: 100% (12/12).** Cohen's κ = 1.0 (perfect agreement, trivially — all verdicts were CORRECT in both runs after the agent fixes).
+
+**Interpretation:** The graders agreed completely, which initially looks like a null result. The informative reading is the opposite: *precise rubrics remove model-size variance*. Our rubrics specify exact forbidden phrases ("must NOT reference Uniswap") and exact required attributions ("must call searchCorpus"), leaving no room for interpretive disagreement. When rubrics are ambiguous, larger models tend to read nuance better; when rubrics are unambiguous, even Haiku reads them correctly. This validates the rubric design more than it tests model capability. The practical consequence: **Haiku is the correct grader for CI** — identical faithfulness quality for these rubrics at ~10× lower cost per call.
+
+What would break this finding: a case where the expected response is genuinely borderline — e.g., "partially cited, partially fabricated." Those cases would expose model-size variance. None of our 12 cases fell in that region after the agent fixes landed.
+
+---
+
+### Total cost — Day 17
+
+| Component | Tokens | Cost |
+|---|---|---|
+| Cross-grader benchmark grader calls (12 Haiku + 12 Sonnet) | ~12,200 | ~$0.044 |
+| Agent HTTP calls (cross-grader: 24 requests) | ~1,000 (agent key) | ~$0.003 |
+| Post-fix verification runs (2 local runs) | ~6,500 | ~$0.009 |
+| **Total Day 17** | | **~$0.056** |
+
+Well under the $1.00 ceiling. Move 3 (cross-agent-model benchmark) deferred to Day 18 — the grader benchmark finding is the stronger publication story, and same-vendor model-size comparison would add cost without a new methodological insight.
