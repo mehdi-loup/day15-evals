@@ -43,7 +43,9 @@ from latency import latency_scorer
 
 _DATASETS = os.path.join(_HERE, "..", "datasets")
 
-GRADER_MODEL = "anthropic/claude-haiku-4-5-20251001"
+# Configurable via GRADER_MODEL env var for cross-grader benchmarking (Day 17).
+# Default: claude-haiku-4-5-20251001. Override: GRADER_MODEL=anthropic/claude-sonnet-4-6
+GRADER_MODEL = os.environ.get("GRADER_MODEL", "anthropic/claude-haiku-4-5-20251001")
 
 FAITHFULNESS_PROMPT = """You are evaluating whether an AI assistant's response correctly satisfies a grading criterion.
 

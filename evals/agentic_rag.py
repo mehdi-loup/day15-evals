@@ -51,11 +51,12 @@ from inspect_ai.solver import TaskState
 
 _DATASETS = os.path.join(_HERE, "..", "datasets")
 
-# Grader model: claude-haiku-4-5-20251001 (Anthropic-only, consistent with agent stack)
-# Rationale: same model family as the agent under test. Using a different provider
-# would introduce cross-provider grading variance. Haiku is cheap enough for per-case
-# grading without materially compromising grader quality for short rubric checks.
-GRADER_MODEL = "anthropic/claude-haiku-4-5-20251001"
+# Grader model: configurable via GRADER_MODEL env var for cross-grader benchmarking.
+# Default: claude-haiku-4-5-20251001 (cheap, Anthropic-only, consistent with agent stack).
+# Cross-grader runs (Day 17): set GRADER_MODEL=anthropic/claude-sonnet-4-6 to compare.
+# Note: --model CLI flag controls the Inspect solver-side model, not the scorer grader.
+# Our custom HTTP solver ignores it; env var is the correct override surface for scorers.
+GRADER_MODEL = os.environ.get("GRADER_MODEL", "anthropic/claude-haiku-4-5-20251001")
 
 # Grader prompt template for faithfulness scoring.
 # Reads criterion from state.metadata["judge_rubric"] — NOT from target.text,
