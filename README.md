@@ -1,6 +1,6 @@
 # Agentic RAG Eval Suite
 
-[![Eval Suite](https://github.com/mehdi-loup/day15-evals/actions/workflows/eval.yml/badge.svg)](https://github.com/mehdi-loup/day15-evals/actions/workflows/eval.yml)
+[![Eval Suite](https://github.com/mehdi-loup/agentic-rag-evals/actions/workflows/eval.yml/badge.svg)](https://github.com/mehdi-loup/agentic-rag-evals/actions/workflows/eval.yml)
 
 **Inspect AI evaluation suite for a deployed TypeScript AI agent: tool-routing accuracy, RAG faithfulness, latency, and cross-grader stability — with CI-enforced regression gates and a cross-grader benchmark showing 100% Haiku/Sonnet agreement on precise rubrics.**
 
@@ -25,8 +25,8 @@ This repo scores [day1-wallet-agent](https://github.com/mehdi-loup/day1-wallet-a
 **Prerequisites:** Python 3.12+, [`uv`](https://docs.astral.sh/uv/), an Anthropic API key.
 
 ```bash
-git clone https://github.com/mehdi-loup/day15-evals
-cd day15-evals
+git clone https://github.com/mehdi-loup/agentic-rag-evals
+cd agentic-rag-evals
 uv sync
 export ANTHROPIC_API_KEY=sk-ant-...
 uv run inspect eval evals/wallet_agent.py --model anthropic/claude-haiku-4-5-20251001
@@ -163,7 +163,7 @@ If you reference this work:
 ```
 Nasom, M. (2026). Agentic RAG Eval Suite: tool-routing accuracy, RAG faithfulness,
 and cross-grader stability for a deployed TypeScript AI agent.
-GitHub: https://github.com/mehdi-loup/day15-evals
+GitHub: https://github.com/mehdi-loup/agentic-rag-evals
 ```
 
 ---
