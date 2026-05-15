@@ -1,3 +1,9 @@
+
+
+https://github.com/user-attachments/assets/b115fbcd-2ad1-4773-9cdc-ea16e88d9d10
+
+
+
 # Agentic RAG Eval Suite
 
 [![Eval Suite](https://github.com/mehdi-loup/agentic-rag-evals/actions/workflows/eval.yml/badge.svg)](https://github.com/mehdi-loup/agentic-rag-evals/actions/workflows/eval.yml)
