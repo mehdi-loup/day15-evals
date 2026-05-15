@@ -162,6 +162,15 @@ See [LIMITATIONS.md](LIMITATIONS.md) for an honest accounting of what this eval 
 
 ---
 
+## Related work
+
+This repo is the **measurement layer** of a three-part stack:
+
+- **[day1-wallet-agent](https://github.com/mehdi-loup/day1-wallet-agent)** — the deployed TS AI agent under test. Black-box scored via its production URL.
+- **[wayfinder-paths-rag](https://github.com/mehdi-loup/wayfinder-paths-rag)** — the retrieval library the agent uses; the `agentic_rag` task here exercises its faithfulness behavior end-to-end.
+
+---
+
 ## Citation
 
 If you reference this work:
